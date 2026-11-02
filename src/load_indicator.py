@@ -5,6 +5,7 @@ Steps:
 2. Save the raw JSON to data/raw/ (keeps a history of series revisions).
 3. Turn the response into a pandas table.
 4. Replace this country + indicator's rows in the DuckDB `observations` table.
+5. (Re)create the SQL views defined in sql/.
 
 For now the country and indicator are fixed below; an example country
 (e.g. Peru) is used until the YAML config exists.
@@ -30,6 +31,7 @@ API_URL = "https://api.worldbank.org/v2/country/{country}/indicator/{indicator}"
 ROOT = Path(__file__).resolve().parent.parent
 RAW_DIR = ROOT / "data" / "raw"
 DB_PATH = ROOT / "data" / "monitor.duckdb"
+SQL_DIR = ROOT / "sql"
 
 
 def fetch(country, indicator, attempts=3, pause_sec=2):
@@ -136,6 +138,16 @@ def save_to_duckdb(table, country, indicator, db_path=DB_PATH):
         con.close()
 
 
+def create_views(db_path=DB_PATH):
+    """Run every .sql file in sql/ (each one is a CREATE OR REPLACE VIEW)."""
+    con = duckdb.connect(str(db_path))
+    try:
+        for sql_file in sorted(SQL_DIR.glob("*.sql")):
+            con.execute(sql_file.read_text(encoding="utf-8"))
+    finally:
+        con.close()
+
+
 def main():
     extracted_at = datetime.now(timezone.utc)
 
@@ -143,6 +155,7 @@ def main():
     raw_path = save_raw(data, COUNTRY, INDICATOR, extracted_at)
     table = to_table(data, extracted_at)
     save_to_duckdb(table, COUNTRY, INDICATOR)
+    create_views()
 
     print(f"Raw JSON saved to: {raw_path.relative_to(ROOT)}")
     print(f"Rows loaded into {DB_PATH.relative_to(ROOT)}: {len(table)}")
