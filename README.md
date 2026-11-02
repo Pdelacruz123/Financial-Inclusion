@@ -11,6 +11,7 @@ python -m venv .venv
 pip install -r requirements.txt
 
 python src/load_indicator.py    # downloads the data into data/monitor.duckdb
+python src/plot_indicator.py    # saves a chart to output/
 pytest                          # runs the tests
 ```
 
