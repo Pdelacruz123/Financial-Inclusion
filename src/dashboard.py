@@ -159,7 +159,7 @@ def overview():
     latest["label_x"] = latest["high"].fillna(latest["value"])
     latest["label"] = latest.apply(bar_label, axis=1)
 
-    st.altair_chart(overview_chart(latest, median, median_label), use_container_width=True)
+    st.altair_chart(overview_chart(latest, median, median_label), width="stretch")
     legend = (
         f"Dashed line: {median_label[0].lower() + median_label[1:]}. "
         f"Grey bars: latest data is from an edition older than {newest}."
@@ -180,12 +180,151 @@ def overview():
         )
 
 
+def verdict(change, significant):
+    """Plain-language reading of a change between editions (icon + text, never color alone)."""
+    if pd.isna(change):
+        return "No previous edition"
+    if pd.isna(significant):
+        return "Cannot assess: no margin"
+    if not significant:
+        return "● No significant change"
+    return "▲ Increase" if change > 0 else "▼ Decrease"
+
+
+def change_sentence(row):
+    if pd.isna(row["change"]):
+        return f"{int(row['edition'])} is the first edition with data."
+    text = f"{int(row['previous_edition'])} → {int(row['edition'])}: {row['change']:+.1f} points. "
+    if pd.isna(row["significant"]):
+        return text + "A margin of error is not available for both editions, so this change cannot be assessed."
+    if row["significant"]:
+        return text + f"Significant: larger than the margin of the change (±{row['change_margin']:.1f})."
+    return text + f"Not significant: smaller than the margin of the change (±{row['change_margin']:.1f})."
+
+
+def evolution_chart(series):
+    text_color = TEXT_COLOR.get(st.context.theme.type, TEXT_COLOR["light"])
+    x = alt.X(
+        "edition:Q",
+        title="Findex edition",
+        scale=alt.Scale(domain=[2010, 2025]),
+        # No vertical grid: it would hide the grey margin lines drawn at each edition.
+        axis=alt.Axis(values=series["edition"].tolist(), format="d", grid=False),
+    )
+    y = alt.Y("value:Q", title="% of adults 15+", scale=alt.Scale(domain=[0, 100]))
+    base = alt.Chart(series).encode(
+        x=x,
+        tooltip=[
+            alt.Tooltip("edition:Q", title="Findex edition", format="d"),
+            alt.Tooltip("survey_year:Q", title="Surveyed in", format="d"),
+            alt.Tooltip("value:Q", title="% of adults", format=".1f"),
+            alt.Tooltip("margin:Q", title="Margin of error (±)", format=".1f"),
+        ],
+    )
+    line = base.mark_line(color=SERIES_COLOR, strokeWidth=2).encode(y=y)
+    margins = base.mark_rule(color=MUTED_COLOR, strokeWidth=2).encode(y="low:Q", y2="high:Q")
+    points = base.mark_circle(color=SERIES_COLOR, size=90, opacity=1).encode(y=y)
+    # Label only the latest edition; the rest is read from the axis or the tooltip.
+    last_label = (
+        alt.Chart(series.tail(1))
+        .mark_text(dy=-16, fontSize=12, color=text_color)
+        .encode(x=x, y=y, text="label:N")
+    )
+    return (line + margins + points + last_label).properties(height=320)
+
+
+def evolution():
+    st.subheader("Account ownership over time")
+    st.caption("Did account ownership really change, or is the change smaller than the margin of error?")
+
+    countries = query(
+        """
+        SELECT DISTINCT f.country_iso3, c.name
+        FROM v_findex_change AS f
+        JOIN countries AS c USING (country_iso3)
+        ORDER BY c.name
+        """
+    )
+    names = dict(zip(countries["country_iso3"], countries["name"]))
+    country = st.selectbox("Country", list(names), format_func=names.get)
+
+    indicator = st.radio(
+        "Group",
+        list(FINDEX_GROUPS),
+        format_func=FINDEX_GROUPS.get,
+        horizontal=True,
+        key="evolution_group",  # the Overview tab has a radio with the same label and options
+    )
+
+    series = query(
+        """
+        SELECT edition, survey_year, value, margin,
+               previous_edition, change, change_margin, significant
+        FROM v_findex_change
+        WHERE country_iso3 = ? AND indicator = ?
+        ORDER BY edition
+        """,
+        [country, indicator],
+    )
+    series["low"] = series["value"] - series["margin"]
+    series["high"] = series["value"] + series["margin"]
+    series["label"] = series.apply(bar_label, axis=1)
+
+    st.altair_chart(evolution_chart(series), width="stretch")
+    st.markdown(f"**{names[country]}**: {change_sentence(series.iloc[-1])}")
+    st.caption(
+        "Lines only connect survey editions; values between editions were not measured. "
+        "Grey vertical lines: margin of error (95%), available for the 2021 and 2024 editions only."
+    )
+
+    st.markdown("#### All countries: change from the previous edition")
+    newest = int(query("SELECT max(edition) AS e FROM v_findex_change")["e"].iloc[0])
+    table = query(
+        """
+        SELECT c.name AS country, f.previous_edition, f.previous_value, f.edition,
+               f.value, f.change, f.change_margin, f.significant
+        FROM v_findex_change AS f JOIN countries AS c USING (country_iso3)
+        WHERE f.indicator = ? AND f.edition = ?
+        ORDER BY f.change DESC
+        """,
+        [indicator, newest],
+    )
+    table["verdict"] = [verdict(c, s) for c, s in zip(table["change"], table["significant"])]
+    one_decimal = "%.1f"
+    st.dataframe(
+        table.drop(columns="significant"),
+        hide_index=True,
+        column_config={
+            "country": "Country",
+            "previous_edition": st.column_config.NumberColumn("From", format="%d"),
+            "previous_value": st.column_config.NumberColumn("Value", format=one_decimal),
+            "edition": st.column_config.NumberColumn("To", format="%d"),
+            "value": st.column_config.NumberColumn("Value ", format=one_decimal),
+            "change": st.column_config.NumberColumn("Change (points)", format="%+.1f"),
+            "change_margin": st.column_config.NumberColumn("Margin of change (±)", format=one_decimal),
+            "verdict": "Verdict",
+        },
+    )
+    notes = [
+        f"Only countries with data in the {newest} edition are listed.",
+        "A change counts as significant only when it is larger than the margin of the change, "
+        "sqrt(m1² + m2²), because both surveys have their own error.",
+    ]
+    if indicator != TOTAL:
+        notes.append(
+            "The margin of error for this group is not published, so its changes cannot be assessed."
+        )
+    st.markdown("\n".join(f"- {note}" for note in notes))
+
+
 st.set_page_config(page_title="Financial inclusion monitor", layout="wide")
 st.title("Financial inclusion monitor: Latin America")
 
-(overview_tab,) = st.tabs(["Overview"])
+overview_tab, evolution_tab = st.tabs(["Overview", "Evolution"])
 with overview_tab:
     overview()
+with evolution_tab:
+    evolution()
 
 st.divider()
 st.caption(ATTRIBUTION)

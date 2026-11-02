@@ -29,6 +29,16 @@ def test_up_to_date_country_is_not_flagged(con):
     assert gap(con, "PER", "FX.OWN.TOTL.ZS") is None
 
 
+def test_evolution_verdicts(con):
+    app = AppTest.from_file(str(DASHBOARD), default_timeout=30).run()
+    assert not app.exception
+    table = next(df.value for df in app.dataframe if "verdict" in df.value.columns)
+    verdicts = dict(zip(table["country"], table["verdict"]))
+    assert verdicts["Peru"] == "● No significant change"  # +1.8 vs ±5.1
+    assert verdicts["Panama"] == "▲ Increase"
+    assert verdicts["Bolivia"] == "▼ Decrease"
+
+
 def test_dashboard_runs_for_every_group(con):
     app = AppTest.from_file(str(DASHBOARD), default_timeout=30).run()
     assert not app.exception
