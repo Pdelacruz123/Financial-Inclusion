@@ -5,7 +5,8 @@ Steps, once per indicator (all countries in one request):
 2. Save the raw JSON to data/raw/ (keeps a history of series revisions).
 3. Turn the response into a pandas table.
 4. Replace this indicator's rows for those countries in the DuckDB `observations` table.
-Then (re)create the SQL views defined in sql/.
+Then load the Findex sample sizes (data/findex_sample.csv) and (re)create
+the SQL views defined in sql/.
 
 Usage:  python src/load_indicator.py
 """
@@ -30,6 +31,7 @@ CONFIG_PATH = ROOT / "config.yaml"
 RAW_DIR = ROOT / "data" / "raw"
 DB_PATH = ROOT / "data" / "monitor.duckdb"
 SQL_DIR = ROOT / "sql"
+FINDEX_SAMPLE_PATH = ROOT / "data" / "findex_sample.csv"
 
 COLUMNS = ["country_iso3", "indicator", "year", "edition", "survey_year", "value", "extracted_at"]
 
@@ -147,6 +149,18 @@ def save_to_duckdb(table, countries, indicator, db_path=DB_PATH):
         con.close()
 
 
+def load_findex_sample(db_path=DB_PATH):
+    """Load interviews and design effect per country and Findex edition (needed for margins of error)."""
+    con = duckdb.connect(str(db_path))
+    try:
+        con.execute(
+            "CREATE OR REPLACE TABLE findex_sample AS SELECT * FROM read_csv(?, header = true)",
+            [str(FINDEX_SAMPLE_PATH)],
+        )
+    finally:
+        con.close()
+
+
 def create_views(db_path=DB_PATH):
     """Run every .sql file in sql/ (each one is a CREATE OR REPLACE VIEW)."""
     con = duckdb.connect(str(db_path))
@@ -171,6 +185,7 @@ def main():
         save_to_duckdb(table, countries, indicator)
         print(f"{indicator:18} {len(table):4} rows")
 
+    load_findex_sample()
     create_views()
     print(f"Done. Database: {DB_PATH.relative_to(ROOT)}")
 
