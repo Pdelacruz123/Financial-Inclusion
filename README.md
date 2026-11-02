@@ -62,6 +62,7 @@ The workflow is `.github/workflows/weekly.yml`. On every push and pull request i
 
 - **Coverage:** `SELECT * FROM v_coverage` gives the share of country-year cells with data per indicator (Findex counts survey editions only). With the 20 default countries: 1,858 of 1,980 cells (93.8%), measured 2026-11-02.
 - **Time to add a country:** add one line to `config.yaml`, then run the loader (~15-18 s, one request per indicator for all countries) and the tests (~7-19 s, they call the API). Measured 2026-11-02 on a home connection.
+- **Findex margins of error:** `data/findex_sample.csv` holds interviews and design effect per country for the 2021 and 2024 editions, from the Findex survey methodology (Table A.1). The margin is computed as `1.96 * sqrt(0.25 / interviews) * sqrt(design_effect)`, which reproduces the published margin in 35 of 36 rows; the other one is a typo in the 2021 methodology (Brazil: 1.5 printed, 4.8 by formula). `v_findex_change` flags a change between editions as significant only when it exceeds the margin of the change, `sqrt(m1^2 + m2^2)`. Earlier editions and subgroups (women, poorest 40%) have no margin.
 - **Findex survey year:** some countries of an edition were surveyed a year later (Guatemala and Mexico: 2021 edition, surveyed in 2022). `edition` and `survey_year` keep both.
 
 ## License
