@@ -64,6 +64,10 @@ The workflow is `.github/workflows/weekly.yml`. On every push and pull request i
 - **Time to add a country:** add one line to `config.yaml`, then run the loader (~15-18 s, one request per indicator for all countries) and the tests (~7-19 s, they call the API). Measured 2026-11-02 on a home connection.
 - **Findex survey year:** some countries of an edition were surveyed a year later (Guatemala and Mexico: 2021 edition, surveyed in 2022). `edition` and `survey_year` keep both.
 
+## License
+
+Code: [MIT](LICENSE). Data: see below.
+
 ## Data sources and license
 
 Data licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
