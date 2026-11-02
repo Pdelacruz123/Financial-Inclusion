@@ -9,6 +9,9 @@ __pycache__/
 data/*.duckdb
 data/*.duckdb.wal
 
+# Raw API downloads: kept locally, storage for CI history still to be decided
+data/raw/*.json
+
 # Generated charts
 output/
 
