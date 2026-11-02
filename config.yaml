@@ -1,6 +1,26 @@
 # Countries (ISO3 codes) and World Bank indicator codes to load.
+# Default: the 20 Latin American countries. Aggregates (WLD, LCN, ...) are not allowed.
 countries:
-  - PER  # example country
+  - ARG  # Argentina
+  - BOL  # Bolivia
+  - BRA  # Brazil
+  - CHL  # Chile
+  - COL  # Colombia
+  - CRI  # Costa Rica
+  - CUB  # Cuba
+  - DOM  # Dominican Republic
+  - ECU  # Ecuador
+  - SLV  # El Salvador
+  - GTM  # Guatemala
+  - HTI  # Haiti
+  - HND  # Honduras
+  - MEX  # Mexico
+  - NIC  # Nicaragua
+  - PAN  # Panama
+  - PRY  # Paraguay
+  - PER  # Peru (example country for the control-value tests)
+  - URY  # Uruguay
+  - VEN  # Venezuela
 
 indicators:
   - FX.OWN.TOTL.ZS     # account ownership, % of adults 15+ (Findex, triennial)
