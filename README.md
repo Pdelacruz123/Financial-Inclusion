@@ -26,6 +26,12 @@ pytest                          # runs the tests
 | `tests/` | pytest tests |
 | `.github/workflows/` | CI (pending) |
 
+## Validation
+
+- **Coverage:** `SELECT * FROM v_coverage` gives the share of country-year cells with data per indicator (Findex counts survey editions only). With the 20 default countries: 1,858 of 1,980 cells (93.8%), measured 2026-11-02.
+- **Time to add a country:** add one line to `config.yaml`, then run the loader (~15-18 s, one request per indicator for all countries) and the tests (~7-19 s, they call the API). Measured 2026-11-02 on a home connection.
+- **Findex survey year:** some countries of an edition were surveyed a year later (Guatemala and Mexico: 2021 edition, surveyed in 2022). `edition` and `survey_year` keep both.
+
 ## Data sources and license
 
 Data licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
