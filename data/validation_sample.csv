@@ -1,14 +1,14 @@
 country_iso3,indicator,year,our_value,primary_source,primary_value,checked_on,notes
-BRA,FB.ATM.TOTL.P5,2023,100.665014242598,IMF Financial Access Survey (data.imf.org),,,
-COL,FB.ATM.TOTL.P5,2023,38.532528791078,IMF Financial Access Survey (data.imf.org),,,
-PAN,FB.ATM.TOTL.P5,2022,72.177709407834,IMF Financial Access Survey (data.imf.org),,,
-BRA,FB.CBK.BRCH.P5,2014,21.5045405654722,IMF Financial Access Survey (data.imf.org),,,
-CHL,FB.CBK.BRCH.P5,2017,14.602224320893,IMF Financial Access Survey (data.imf.org),,,
-CRI,FB.CBK.BRCH.P5,2013,22.5947275646261,IMF Financial Access Survey (data.imf.org),,,
-PAN,FB.CBK.BRCH.P5,2021,19.5722848977884,IMF Financial Access Survey (data.imf.org),,,
-PAN,FB.CBK.BRCH.P5,2024,17.7211487314488,IMF Financial Access Survey (data.imf.org),,,
-PER,FB.CBK.BRCH.P5,2013,7.86417284592647,IMF Financial Access Survey (data.imf.org),,,
-SLV,FB.CBK.BRCH.P5,2013,12.0344575793501,IMF Financial Access Survey (data.imf.org),,,
+BRA,FB.ATM.TOTL.P5,2023,100.665014242598,IMF Financial Access Survey (data.imf.org),69.6146,2026-11-02,"IMF FAS FA18, per 100,000 adults, via api.imf.org"
+COL,FB.ATM.TOTL.P5,2023,38.532528791078,IMF Financial Access Survey (data.imf.org),38.5325,2026-11-02,"IMF FAS FA18, per 100,000 adults, via api.imf.org"
+PAN,FB.ATM.TOTL.P5,2022,72.177709407834,IMF Financial Access Survey (data.imf.org),72.1777,2026-11-02,"IMF FAS FA18, per 100,000 adults, via api.imf.org"
+BRA,FB.CBK.BRCH.P5,2014,21.5045405654722,IMF Financial Access Survey (data.imf.org),21.5045,2026-11-02,"IMF FAS FA26, per 100,000 adults, via api.imf.org"
+CHL,FB.CBK.BRCH.P5,2017,14.602224320893,IMF Financial Access Survey (data.imf.org),14.6022,2026-11-02,"IMF FAS FA26, per 100,000 adults, via api.imf.org"
+CRI,FB.CBK.BRCH.P5,2013,22.5947275646261,IMF Financial Access Survey (data.imf.org),22.5947,2026-11-02,"IMF FAS FA26, per 100,000 adults, via api.imf.org"
+PAN,FB.CBK.BRCH.P5,2021,19.5722848977884,IMF Financial Access Survey (data.imf.org),19.5723,2026-11-02,"IMF FAS FA26, per 100,000 adults, via api.imf.org"
+PAN,FB.CBK.BRCH.P5,2024,17.7211487314488,IMF Financial Access Survey (data.imf.org),17.6917,2026-11-02,"IMF FAS FA26, per 100,000 adults, via api.imf.org"
+PER,FB.CBK.BRCH.P5,2013,7.86417284592647,IMF Financial Access Survey (data.imf.org),7.8642,2026-11-02,"IMF FAS FA26, per 100,000 adults, via api.imf.org"
+SLV,FB.CBK.BRCH.P5,2013,12.0344575793501,IMF Financial Access Survey (data.imf.org),12.0345,2026-11-02,"IMF FAS FA26, per 100,000 adults, via api.imf.org"
 DOM,FX.OWN.TOTL.40.ZS,2021,38.881950139241,Global Findex 2025 official file (GlobalFindexDatabase2025.csv),38.882,2026-11-02,
 ECU,FX.OWN.TOTL.40.ZS,2011,22.7538770071371,Global Findex 2025 official file (GlobalFindexDatabase2025.csv),22.7539,2026-11-02,
 HND,FX.OWN.TOTL.40.ZS,2021,26.9722905374558,Global Findex 2025 official file (GlobalFindexDatabase2025.csv),26.9723,2026-11-02,
