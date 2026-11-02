@@ -1,10 +1,16 @@
-# Entorno virtual de Python
+# Python virtual environment
 .venv/
 
-# Caché de Python y pytest
+# Python and pytest caches
 __pycache__/
 .pytest_cache/
 
-# Base de datos: se regenera corriendo el script
+# Database: rebuilt by running the loader
 data/*.duckdb
 data/*.duckdb.wal
+
+# Generated charts
+output/
+
+# Local notes for Claude Code
+CLAUDE.md
