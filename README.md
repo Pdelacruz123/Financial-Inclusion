@@ -34,7 +34,11 @@ pip install -r requirements.txt
 python src/load_indicator.py    # downloads the indicators in config.yaml into data/monitor.duckdb
 python src/plot_indicator.py    # saves a chart to output/
 pytest                          # runs the tests (they also call the World Bank API)
+
+streamlit run src/dashboard.py  # opens the dashboard in your browser
 ```
+
+The dashboard uses `data/monitor.duckdb` if it exists; otherwise it downloads the latest weekly release, so `streamlit run src/dashboard.py` works even without running the loader.
 
 To change countries or indicators, edit `config.yaml` and run the loader again. Countries are ISO3 codes (e.g. `CHL`); aggregates such as `WLD` or `LCN` are rejected by the tests. A new indicator also needs a valid range in `tests/test_ranges.py`.
 
@@ -51,7 +55,7 @@ The workflow is `.github/workflows/weekly.yml`. On every push and pull request i
 | Path | Contents |
 |---|---|
 | `config.yaml` | Countries and indicators to load |
-| `src/` | Python code: loader and chart |
+| `src/` | Python code: loader, chart and Streamlit dashboard |
 | `sql/` | SQL views, created by the loader |
 | `tests/` | pytest tests |
 | `data/raw/` | Raw JSON of each download (not committed; published in releases) |
