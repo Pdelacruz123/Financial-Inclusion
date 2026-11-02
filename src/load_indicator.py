@@ -41,7 +41,14 @@ FINDEX_EDITIONS = (2011, 2014, 2017, 2021, 2024)
 
 def findex_edition(survey_year):
     """Some countries of an edition were surveyed a year later (e.g. 2021 edition, surveyed in 2022)."""
-    return max(edition for edition in FINDEX_EDITIONS if edition <= survey_year)
+    edition = max(edition for edition in FINDEX_EDITIONS if edition <= survey_year)
+    # Fail loudly instead of silently filing a new edition under the previous one.
+    if survey_year - edition > 1:
+        raise ValueError(
+            f"Survey year {survey_year} matches no known Findex edition; "
+            "add the new edition to FINDEX_EDITIONS."
+        )
+    return edition
 
 
 def load_config(path=CONFIG_PATH):
