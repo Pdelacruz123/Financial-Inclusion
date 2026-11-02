@@ -3,3 +3,4 @@ pandas>=2.2
 duckdb>=1.1
 pytest>=8.0
 matplotlib>=3.9
+pyyaml>=6.0
