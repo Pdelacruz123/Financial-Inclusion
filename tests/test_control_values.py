@@ -35,3 +35,14 @@ def value(con, indicator, year):
 def test_control_value(con, indicator, year, expected):
     # Accept +-0.5: Table B.1 rounds to whole numbers.
     assert value(con, indicator, year) == pytest.approx(expected, abs=0.5)
+
+
+def test_late_survey_keeps_its_edition(con):
+    # The official file lists Mexico's 2021 edition as surveyed in 2022.
+    row = con.execute(
+        """
+        SELECT edition, survey_year FROM observations
+        WHERE country_iso3 = 'MEX' AND indicator = 'FX.OWN.TOTL.ZS' AND year = 2022
+        """
+    ).fetchone()
+    assert row == (2021, 2022)

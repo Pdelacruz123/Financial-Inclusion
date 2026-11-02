@@ -33,6 +33,14 @@ SQL_DIR = ROOT / "sql"
 
 COLUMNS = ["country_iso3", "indicator", "year", "edition", "survey_year", "value", "extracted_at"]
 
+# shortcut: hardcoded list, add the next Findex edition here when it is published.
+FINDEX_EDITIONS = (2011, 2014, 2017, 2021, 2024)
+
+
+def findex_edition(survey_year):
+    """Some countries of an edition were surveyed a year later (e.g. 2021 edition, surveyed in 2022)."""
+    return max(edition for edition in FINDEX_EDITIONS if edition <= survey_year)
+
 
 def load_config(path=CONFIG_PATH):
     return yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -90,13 +98,14 @@ def to_table(data, extracted_at):
             continue
         indicator = record["indicator"]["id"]
         year = int(record["date"])
+        is_findex = indicator.startswith("FX.")  # only Findex has survey editions
         rows.append(
             {
                 "country_iso3": record["countryiso3code"],
                 "indicator": indicator,
                 "year": year,
-                "edition": year if indicator.startswith("FX.") else None,  # only Findex has editions
-                "survey_year": None,  # not in the API; to be filled from the official Findex file
+                "edition": findex_edition(year) if is_findex else None,
+                "survey_year": year if is_findex else None,  # for Findex the API date is the survey year
                 "value": float(record["value"]),
                 "extracted_at": extracted_at.replace(tzinfo=None),  # stored in UTC
             }
