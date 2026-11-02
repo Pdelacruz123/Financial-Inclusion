@@ -5,8 +5,8 @@ Steps, once per indicator (all countries in one request):
 2. Save the raw JSON to data/raw/ (keeps a history of series revisions).
 3. Turn the response into a pandas table.
 4. Replace this indicator's rows for those countries in the DuckDB `observations` table.
-Then load the Findex sample sizes (data/findex_sample.csv) and (re)create
-the SQL views defined in sql/.
+Then save the country names, load the Findex sample sizes
+(data/findex_sample.csv) and (re)create the SQL views defined in sql/.
 
 Usage:  python src/load_indicator.py
 """
@@ -149,6 +149,17 @@ def save_to_duckdb(table, countries, indicator, db_path=DB_PATH):
         con.close()
 
 
+def save_countries(names, db_path=DB_PATH):
+    """Save ISO3 code -> country name, as returned by the API (used by the dashboard)."""
+    countries = pd.DataFrame(sorted(names.items()), columns=["country_iso3", "name"])
+    con = duckdb.connect(str(db_path))
+    try:
+        con.register("countries_df", countries)
+        con.execute("CREATE OR REPLACE TABLE countries AS SELECT * FROM countries_df")
+    finally:
+        con.close()
+
+
 def load_findex_sample(db_path=DB_PATH):
     """Load interviews and design effect per country and Findex edition (needed for margins of error)."""
     con = duckdb.connect(str(db_path))
@@ -175,16 +186,19 @@ def main():
     config = load_config()
     countries = config["countries"]
     extracted_at = datetime.now(timezone.utc)
+    names = {}
 
     for i, indicator in enumerate(config["indicators"]):
         if i > 0:
             time.sleep(PAUSE_BETWEEN_REQUESTS_SEC)
         data = fetch(countries, indicator)
+        names.update({r["countryiso3code"]: r["country"]["value"] for r in data[1]})
         save_raw(data, indicator, extracted_at)
         table = to_table(data, extracted_at)
         save_to_duckdb(table, countries, indicator)
         print(f"{indicator:18} {len(table):4} rows")
 
+    save_countries(names)
     load_findex_sample()
     create_views()
     print(f"Done. Database: {DB_PATH.relative_to(ROOT)}")
