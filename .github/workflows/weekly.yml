@@ -1,0 +1,47 @@
+# Load the data and run the tests on every push and pull request.
+# Every Monday (and on demand) it also publishes the database and the raw
+# API responses as a GitHub Release, so each weekly load is kept.
+name: Load and test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"  # Mondays 06:00 UTC
+  workflow_dispatch:     # "Run workflow" button in the Actions tab
+
+jobs:
+  load-and-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # needed to create the release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - run: python src/load_indicator.py
+
+      - run: pytest -v
+
+      - name: Publish release with the data
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          stamp=$(date -u +%Y-%m-%d-%H%M)
+          zip -j -q raw-json.zip data/raw/*.json
+          gh release create "data-$stamp" data/monitor.duckdb raw-json.zip \
+            --title "Data $stamp UTC" \
+            --notes "Weekly load of the indicators in config.yaml. All tests passed.
+
+          - monitor.duckdb: the database (table observations, views v_indicator_change and v_coverage).
+          - raw-json.zip: the API responses exactly as received.
+
+          Data: The World Bank: World Development Indicators (CC BY 4.0). Original sources per indicator are listed in the README. This project is not affiliated with or endorsed by the World Bank."
