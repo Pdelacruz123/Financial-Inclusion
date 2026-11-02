@@ -1,0 +1,10 @@
+# Entorno virtual de Python
+.venv/
+
+# Caché de Python y pytest
+__pycache__/
+.pytest_cache/
+
+# Base de datos: se regenera corriendo el script
+data/*.duckdb
+data/*.duckdb.wal
