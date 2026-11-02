@@ -33,3 +33,11 @@ def test_change_2021_to_2024(con):
     year, previous_year, change = change_rows(con)[-1]
     assert (year, previous_year) == (2024, 2021)
     assert 1 <= change <= 3  # 59.3 - 57.5 = 1.8 points
+
+
+def test_coverage_counts_every_loaded_row(con):
+    with_data, possible = con.execute(
+        "SELECT sum(cells_with_data), sum(possible_cells) FROM v_coverage"
+    ).fetchone()
+    assert with_data == con.execute("SELECT count(*) FROM observations").fetchone()[0]
+    assert with_data <= possible
