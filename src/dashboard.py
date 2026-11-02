@@ -30,6 +30,7 @@ TOTAL = "FX.OWN.TOTL.ZS"  # the only group with a published sample size, so the 
 
 SERIES_COLOR = "#2a78d6"
 MUTED_COLOR = "#8a8984"
+TEXT_COLOR = {"light": "#0b0b0b", "dark": "#f0efec"}
 
 ATTRIBUTION = (
     "Data: The World Bank: World Development Indicators: Global Findex Database (CC BY 4.0). "
@@ -65,8 +66,10 @@ def overview_chart(latest, median, median_label):
     # Domain goes past 100 only to leave room for the labels; ticks stop at 100.
     x_scale = alt.Scale(domain=[0, 125])
     x_axis = alt.Axis(values=list(range(0, 101, 20)), title="% of adults 15+")
+    # Altair text marks do not follow the Streamlit theme, so pick the color ourselves.
+    text_color = TEXT_COLOR.get(st.context.theme.type, TEXT_COLOR["light"])
     base = alt.Chart(latest).encode(
-        y=alt.Y("name:N", sort="-x", title=None),
+        y=alt.Y("name:N", sort="-x", title=None, axis=alt.Axis(labelLimit=250)),
         tooltip=[
             alt.Tooltip("name:N", title="Country"),
             alt.Tooltip("value:Q", title="% of adults", format=".1f"),
@@ -81,7 +84,7 @@ def overview_chart(latest, median, median_label):
         color=alt.condition("datum.is_current", alt.value(SERIES_COLOR), alt.value(MUTED_COLOR)),
     )
     margins = base.mark_rule(color=MUTED_COLOR, strokeWidth=2).encode(x="low:Q", x2="high:Q")
-    labels = base.mark_text(align="left", dx=6, fontSize=12).encode(
+    labels = base.mark_text(align="left", dx=6, fontSize=12, color=text_color).encode(
         x="label_x:Q", text="label:N"
     )
     median_rule = (
@@ -157,11 +160,13 @@ def overview():
     latest["label"] = latest.apply(bar_label, axis=1)
 
     st.altair_chart(overview_chart(latest, median, median_label), use_container_width=True)
-    st.markdown(
+    legend = (
         f"Dashed line: {median_label[0].lower() + median_label[1:]}. "
-        f"Grey bars: latest data is from an edition older than {newest}. "
-        "Thin lines: margin of error (95%)."
+        f"Grey bars: latest data is from an edition older than {newest}."
     )
+    if latest["margin"].notna().any():
+        legend += " Thin lines: margin of error (95%)."
+    st.markdown(legend)
 
     with st.expander("Data notes", expanded=True):
         st.markdown("\n".join(f"- {note}" for note in data_notes(latest, indicator)))
