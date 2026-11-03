@@ -3,7 +3,7 @@ Open-source financial inclusion pipeline and dashboard using data from the World
 
 **Live dashboard:** <https://financial-inclusion-latam.streamlit.app/>
 
-Status: stage 3 (9 indicators and the 20 Latin American countries from `config.yaml`, weekly load in CI).
+Status: stage 3 (9 indicators and the 20 Latin American countries from `config.yaml`, weekly load in CI, dashboard with 5 views: Overview, Evolution, Gaps, Infrastructure and Context).
 
 ## Just want the data?
 

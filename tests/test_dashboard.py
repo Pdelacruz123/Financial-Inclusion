@@ -55,6 +55,16 @@ def test_infrastructure_pairs(con):
     assert (pairs["survey_year"] - pairs["supply_year"]).between(0, 2).all()
 
 
+def test_context_runs_for_every_indicator(con):
+    app = AppTest.from_file(str(DASHBOARD), default_timeout=30).run()
+    for indicator in ["IT.NET.USER.ZS", "IT.CEL.SETS.P2", "FS.AST.PRVT.GD.ZS", "NY.GDP.PCAP.CD"]:
+        app.radio(key="context_indicator").set_value(indicator).run()
+        assert not app.exception, indicator
+    # Credit must always carry its warning: it measures depth, not inclusion.
+    app.radio(key="context_indicator").set_value("FS.AST.PRVT.GD.ZS").run()
+    assert any("Financial depth, not inclusion" in m.value for m in app.markdown)
+
+
 def test_dashboard_runs_for_every_group(con):
     app = AppTest.from_file(str(DASHBOARD), default_timeout=30).run()
     assert not app.exception
