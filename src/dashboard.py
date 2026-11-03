@@ -7,6 +7,8 @@ Usage:  streamlit run src/dashboard.py
 """
 
 import tempfile
+import time
+from datetime import timedelta
 from pathlib import Path
 
 import altair as alt
@@ -40,11 +42,12 @@ ATTRIBUTION = (
 )
 
 
-@st.cache_resource
+@st.cache_resource(ttl=timedelta(days=1))  # re-download once a day so the weekly release shows up
 def connect():
     path = LOCAL_DB
     if not path.exists():
-        path = Path(tempfile.gettempdir()) / "financial-inclusion-monitor.duckdb"
+        # A new file per download: an open connection may still be reading the previous one.
+        path = Path(tempfile.gettempdir()) / f"financial-inclusion-monitor-{int(time.time())}.duckdb"
         response = requests.get(RELEASE_DB_URL, timeout=60)
         response.raise_for_status()
         path.write_bytes(response.content)
