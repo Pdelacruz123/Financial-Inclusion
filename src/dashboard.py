@@ -84,15 +84,26 @@ INDICATOR_NOTES = {
 }
 
 
-@st.cache_resource(ttl=timedelta(days=1))  # re-download once a day so the weekly release shows up
-def connect():
-    path = LOCAL_DB
-    if not path.exists():
-        # A new file per download: an open connection may still be reading the previous one.
-        path = Path(tempfile.gettempdir()) / f"financial-inclusion-monitor-{int(time.time())}.duckdb"
+def download_database(directory):
+    """Download the latest release; if GitHub fails, reuse the newest earlier download."""
+    # A new file per download: an open connection may still be reading the previous one.
+    path = directory / f"financial-inclusion-monitor-{int(time.time())}.duckdb"
+    try:
         response = requests.get(RELEASE_DB_URL, timeout=60)
         response.raise_for_status()
         path.write_bytes(response.content)
+        return path
+    except requests.RequestException:
+        # Names end in a Unix timestamp of equal length, so the last one sorted is the newest.
+        previous = sorted(directory.glob("financial-inclusion-monitor-*.duckdb"))
+        if not previous:
+            raise
+        return previous[-1]
+
+
+@st.cache_resource(ttl=timedelta(days=1))  # re-download once a day so the weekly release shows up
+def connect():
+    path = LOCAL_DB if LOCAL_DB.exists() else download_database(Path(tempfile.gettempdir()))
     return duckdb.connect(str(path), read_only=True)
 
 
