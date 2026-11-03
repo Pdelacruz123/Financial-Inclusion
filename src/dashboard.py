@@ -59,6 +59,11 @@ def query(sql, params=None):
     return connect().cursor().execute(sql, params or []).df()
 
 
+def margin_text(margins):
+    """Readable margin for tooltips: Altair would print an empty value as "null"."""
+    return margins.map(lambda m: "not available" if pd.isna(m) else f"±{m:.1f}")
+
+
 def bar_label(row):
     text = f"{row['value']:.1f}"
     if pd.notna(row["margin"]):
@@ -77,7 +82,7 @@ def overview_chart(latest, median, median_label):
         tooltip=[
             alt.Tooltip("name:N", title="Country"),
             alt.Tooltip("value:Q", title="% of adults", format=".1f"),
-            alt.Tooltip("margin:Q", title="Margin of error (±)", format=".1f"),
+            alt.Tooltip("margin_text:N", title="Margin of error (95%)"),
             alt.Tooltip("edition:Q", title="Findex edition"),
             alt.Tooltip("survey_year:Q", title="Surveyed in"),
         ],
@@ -162,6 +167,7 @@ def overview():
     latest["high"] = latest["value"] + latest["margin"]
     latest["label_x"] = latest["high"].fillna(latest["value"])
     latest["label"] = latest.apply(bar_label, axis=1)
+    latest["margin_text"] = margin_text(latest["margin"])
 
     st.altair_chart(overview_chart(latest, median, median_label), width="stretch")
     legend = (
@@ -222,7 +228,7 @@ def evolution_chart(series):
             alt.Tooltip("edition:Q", title="Findex edition", format="d"),
             alt.Tooltip("survey_year:Q", title="Surveyed in", format="d"),
             alt.Tooltip("value:Q", title="% of adults", format=".1f"),
-            alt.Tooltip("margin:Q", title="Margin of error (±)", format=".1f"),
+            alt.Tooltip("margin_text:N", title="Margin of error (95%)"),
         ],
     )
     line = base.mark_line(color=SERIES_COLOR, strokeWidth=2).encode(y=y)
@@ -273,6 +279,7 @@ def evolution():
     series["low"] = series["value"] - series["margin"]
     series["high"] = series["value"] + series["margin"]
     series["label"] = series.apply(bar_label, axis=1)
+    series["margin_text"] = margin_text(series["margin"])
 
     st.altair_chart(evolution_chart(series), width="stretch")
     st.markdown(f"**{names[country]}**: {change_sentence(series.iloc[-1])}")
