@@ -17,3 +17,6 @@ output/
 
 # Local notes for Claude Code
 CLAUDE.md
+
+# Power BI export: rebuilt by src/export_powerbi.py
+powerbi/*.parquet
