@@ -19,9 +19,9 @@ COL,FX.OWN.TOTL.FE.ZS,2017,42.4744313309802,Global Findex 2025 official file (Gl
 ECU,FX.OWN.TOTL.ZS,2017,51.2460171775344,Global Findex 2025 official file (GlobalFindexDatabase2025.csv),51.246,2026-11-02,
 HND,FX.OWN.TOTL.ZS,2017,45.3429695987159,Global Findex 2025 official file (GlobalFindexDatabase2025.csv),45.343,2026-11-02,
 PRY,FX.OWN.TOTL.ZS,2017,48.646860657984,Global Findex 2025 official file (GlobalFindexDatabase2025.csv),48.6469,2026-11-02,
-ECU,IT.CEL.SETS.P2,2019,91.4249181128443,ITU DataHub (datahub.itu.int),91.4,2026-11-02,"Mobile-cellular subscriptions, unit per 100 people, ITU DataHub Data query (value as shown on screen, rounded)"
-MEX,IT.CEL.SETS.P2,2020,96.9237451881936,ITU DataHub (datahub.itu.int),96.9,2026-11-02,"Mobile-cellular subscriptions, unit per 100 people, ITU DataHub Data query (value as shown on screen, rounded)"
-PER,IT.CEL.SETS.P2,2021,129.993736857913,ITU DataHub (datahub.itu.int),130.0,2026-11-02,"Mobile-cellular subscriptions, unit per 100 people, ITU DataHub Data query (value as shown on screen, rounded)"
+ECU,IT.CEL.SETS.P2,2019,91.4249181128443,ITU DataHub (datahub.itu.int),91.4249,2026-11-02,"Mobile-cellular subscriptions, unit per 100 people, ITU DataHub Data query download"
+MEX,IT.CEL.SETS.P2,2020,96.9237451881936,ITU DataHub (datahub.itu.int),96.9237,2026-11-02,"Mobile-cellular subscriptions, unit per 100 people, ITU DataHub Data query download"
+PER,IT.CEL.SETS.P2,2021,129.993736857913,ITU DataHub (datahub.itu.int),129.9937,2026-11-02,"Mobile-cellular subscriptions, unit per 100 people, ITU DataHub Data query download"
 BOL,IT.NET.USER.ZS,2013,36.99,ITU DataHub (datahub.itu.int),36.99,2026-11-02,"Individuals using the Internet (% of individuals), ITU DataHub Data query download"
 BOL,IT.NET.USER.ZS,2014,34.6016202324676,ITU DataHub (datahub.itu.int),34.6016,2026-11-02,"Individuals using the Internet (% of individuals), ITU DataHub Data query download"
 CUB,IT.NET.USER.ZS,2020,71.11907507,ITU DataHub (datahub.itu.int),71.1191,2026-11-02,"Individuals using the Internet (% of individuals), ITU DataHub Data query download"
