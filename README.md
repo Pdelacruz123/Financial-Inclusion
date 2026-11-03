@@ -42,7 +42,17 @@ streamlit run src/dashboard.py  # opens the dashboard in your browser
 
 The dashboard uses `data/monitor.duckdb` if it exists; otherwise it downloads the latest weekly release, so `streamlit run src/dashboard.py` works even without running the loader.
 
-To change countries or indicators, edit `config.yaml` and run the loader again. Countries are ISO3 codes (e.g. `CHL`); aggregates such as `WLD` or `LCN` are rejected by the tests. A new indicator also needs a valid range in `tests/test_ranges.py`.
+To change countries or indicators, edit `config.yaml` and run the loader again. Countries are ISO3 codes (e.g. `CHL`); aggregates such as `WLD` or `LCN` are rejected by the tests. Indicators are listed as `code: "short label"`; the label is what reports show. A new indicator also needs a valid range in `tests/test_ranges.py`.
+
+## Power BI
+
+Power BI has no DuckDB connector, so `python src/export_powerbi.py` writes a star schema as Parquet files in `powerbi/`: `fact_observations` (one row per country, indicator and year) and the dimensions `dim_country`, `dim_indicator` and `dim_year`. Load them with *Get data → Parquet*, and relate each dimension to the fact table (one-to-many). For Findex indicators, group by `edition` rather than `year`: some countries of the 2021 edition were surveyed in 2022.
+
+`powerbi/financial_inclusion.pbix` is a ready-made report on this model, with two pages: Findex (by edition) and annual indicators (by year). Each value is shown with the measure `Median value (unweighted)`, which is blank when more than one indicator is selected. To open it with your own data:
+
+1. Run `python src/load_indicator.py` and `python src/export_powerbi.py`.
+2. The report points to the Parquet files on the author's computer. In Power BI Desktop, go to *Transform data → Data source settings* and change the path of each file to your `powerbi/` folder.
+3. Click *Refresh*.
 
 ## Run your own weekly load
 
