@@ -29,6 +29,7 @@ FINDEX_GROUPS = {
 TOTAL = "FX.OWN.TOTL.ZS"  # the only group with a published sample size, so the only one with margins
 
 SERIES_COLOR = "#2a78d6"
+GROUP_COLOR = "#eb6834"  # second slot of the validated categorical palette
 MUTED_COLOR = "#8a8984"
 TEXT_COLOR = {"light": "#0b0b0b", "dark": "#f0efec"}
 
@@ -317,14 +318,106 @@ def evolution():
     st.markdown("\n".join(f"- {note}" for note in notes))
 
 
+def gaps_chart(table, group_label):
+    # Long format: one row per country and series, so Altair draws a legend.
+    points = table.melt(
+        id_vars=["name", "edition", "gap"], value_vars=["all_adults", "group_value"],
+        var_name="series", value_name="value",
+    )
+    points["series"] = points["series"].map({"all_adults": "All adults", "group_value": group_label})
+    # labelOverlap=False: otherwise Vega hides every other country name when rows are tight.
+    y = alt.Y("name:N", sort=alt.EncodingSortField("gap", order="descending"), title=None,
+              axis=alt.Axis(labelLimit=250, labelOverlap=False))
+    x_scale = alt.Scale(domain=[0, 100])
+    x_axis = alt.Axis(values=list(range(0, 101, 20)), title="% of adults 15+")
+    lines = alt.Chart(table).mark_rule(color=MUTED_COLOR, strokeWidth=2).encode(
+        y=y, x=alt.X("group_value:Q", scale=x_scale, axis=x_axis), x2="all_adults:Q"
+    )
+    dots = alt.Chart(points).mark_circle(size=90, opacity=1).encode(
+        y=y,
+        x=alt.X("value:Q", scale=x_scale, axis=x_axis),
+        color=alt.Color(
+            "series:N",
+            scale=alt.Scale(domain=["All adults", group_label], range=[SERIES_COLOR, GROUP_COLOR]),
+            legend=alt.Legend(title=None, orient="top"),
+        ),
+        tooltip=[
+            alt.Tooltip("name:N", title="Country"),
+            alt.Tooltip("series:N", title="Group"),
+            alt.Tooltip("value:Q", title="% of adults", format=".1f"),
+            alt.Tooltip("gap:Q", title="Gap (points)", format=".1f"),
+            alt.Tooltip("edition:Q", title="Findex edition", format="d"),
+        ],
+    )
+    return (lines + dots).properties(height=28 * len(table))
+
+
+def gaps():
+    st.subheader("Gaps: who is left behind?")
+    st.caption(
+        "Points between the share of all adults with an account and the share in a group. "
+        "The data has no figures for men or the richest 60%, so the gap is measured "
+        "against all adults, not against the other half."
+    )
+    groups = {code: label for code, label in FINDEX_GROUPS.items() if code != TOTAL}
+    indicator = st.radio(
+        "Group", list(groups), format_func=groups.get, horizontal=True, key="gaps_group"
+    )
+    table = query(
+        """
+        SELECT c.name, t.edition, t.value AS all_adults, g.value AS group_value,
+               t.value - g.value AS gap
+        FROM v_findex_change AS t
+        JOIN v_findex_change AS g
+            ON g.country_iso3 = t.country_iso3 AND g.edition = t.edition AND g.indicator = ?
+        JOIN countries AS c ON c.country_iso3 = t.country_iso3
+        WHERE t.indicator = ?
+        QUALIFY row_number() OVER (PARTITION BY t.country_iso3 ORDER BY t.edition DESC) = 1
+        """,
+        [indicator, TOTAL],
+    )
+    newest = table["edition"].max()
+    outdated = table["edition"] != newest
+    table.loc[outdated, "name"] = table["name"] + " (" + table["edition"].astype(str) + ")"
+    st.altair_chart(gaps_chart(table, groups[indicator]), width="stretch")
+
+    current = table[~outdated]
+    st.markdown(
+        f"Median gap of {len(current)} countries with {newest} data, unweighted: "
+        f"**{current['gap'].median():.1f} points**. Sorted from the largest gap to the smallest."
+    )
+    notes = [
+        "The margin of error for this group is not published and is larger than the national "
+        "margin, so small gaps (a few points) may be survey noise.",
+        "A gap below zero means the group is above all adults.",
+    ]
+    for row in table[outdated].itertuples():
+        notes.append(f"**{row.name}**: latest edition is {row.edition}; left out of the median.")
+    st.markdown("\n".join(f"- {note}" for note in notes))
+    with st.expander("Table"):
+        st.dataframe(
+            table.sort_values("gap", ascending=False),
+            hide_index=True,
+            column_config={
+                "name": "Country",
+                "edition": st.column_config.NumberColumn("Edition", format="%d"),
+                "all_adults": st.column_config.NumberColumn("All adults", format="%.1f"),
+                "group_value": st.column_config.NumberColumn(groups[indicator], format="%.1f"),
+                "gap": st.column_config.NumberColumn("Gap (points)", format="%.1f"),
+            },
+        )
+
+
 st.set_page_config(page_title="Financial inclusion monitor", layout="wide")
 st.title("Financial inclusion monitor: Latin America")
 
-overview_tab, evolution_tab = st.tabs(["Overview", "Evolution"])
+overview_tab, evolution_tab, gaps_tab = st.tabs(["Overview", "Evolution", "Gaps"])
 with overview_tab:
     overview()
 with evolution_tab:
     evolution()
+with gaps_tab:
+    gaps()
 
 st.divider()
 st.caption(ATTRIBUTION)

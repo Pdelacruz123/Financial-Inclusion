@@ -39,6 +39,13 @@ def test_evolution_verdicts(con):
     assert verdicts["Bolivia"] == "▼ Decrease"
 
 
+def test_gaps_for_women(con):
+    app = AppTest.from_file(str(DASHBOARD), default_timeout=30).run()
+    table = next(df.value for df in app.dataframe if "gap" in df.value.columns)
+    gap = dict(zip(table["name"], table["gap"]))
+    assert abs(gap["Peru"] - 3.1) < 0.1  # all adults 59.3, women 56.2 (2024)
+
+
 def test_dashboard_runs_for_every_group(con):
     app = AppTest.from_file(str(DASHBOARD), default_timeout=30).run()
     assert not app.exception
