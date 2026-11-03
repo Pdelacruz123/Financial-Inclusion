@@ -10,7 +10,7 @@ import requests
 import yaml
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
-CODES = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))["indicators"]
+CODES = list(yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))["indicators"])
 
 
 @pytest.mark.parametrize("code", CODES)

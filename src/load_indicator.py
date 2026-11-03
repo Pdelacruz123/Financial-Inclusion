@@ -156,13 +156,13 @@ def save_to_duckdb(table, countries, indicator, db_path=DB_PATH):
         con.close()
 
 
-def save_names(table, key_column, names, db_path=DB_PATH):
-    """Save code -> name, as returned by the API (countries and indicators)."""
-    rows = pd.DataFrame(sorted(names.items()), columns=[key_column, "name"])
+def save_lookup(table, rows, columns, db_path=DB_PATH):
+    """Replace a small lookup table (country names, indicator names and labels)."""
+    frame = pd.DataFrame(rows, columns=columns)
     con = duckdb.connect(str(db_path))
     try:
-        con.register("names_df", rows)
-        con.execute(f"CREATE OR REPLACE TABLE {table} AS SELECT * FROM names_df")
+        con.register("lookup_df", frame)
+        con.execute(f"CREATE OR REPLACE TABLE {table} AS SELECT * FROM lookup_df")
     finally:
         con.close()
 
@@ -207,8 +207,12 @@ def main():
         save_to_duckdb(table, countries, indicator)
         print(f"{indicator:18} {len(table):4} rows")
 
-    save_names("countries", "country_iso3", country_names)
-    save_names("indicators", "indicator", indicator_names)
+    save_lookup("countries", sorted(country_names.items()), ["country_iso3", "name"])
+    save_lookup(
+        "indicators",
+        [(code, indicator_names.get(code), label) for code, label in config["indicators"].items()],
+        ["indicator", "name", "label"],
+    )
     load_findex_sample()
     create_views()
     print(f"Done. Database: {DB_PATH.relative_to(ROOT)}")

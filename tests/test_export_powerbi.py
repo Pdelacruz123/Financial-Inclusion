@@ -33,6 +33,8 @@ def test_star_schema(con, tmp_path):
     assert set(fact["indicator"]) <= set(indicators["indicator"])
     assert set(fact["year"]) <= set(years["year"])
     assert countries["country_iso3"].is_unique and indicators["indicator"].is_unique
+    # Every indicator needs its own short label in config.yaml, or report slicers mix them up.
+    assert indicators["label"].notna().all() and indicators["label"].is_unique
 
     # The margin arrives for total account ownership (example country, 2024: about 3.6).
     margin = fact.query("country_iso3 == 'PER' and indicator == 'FX.OWN.TOTL.ZS' and year == 2024")

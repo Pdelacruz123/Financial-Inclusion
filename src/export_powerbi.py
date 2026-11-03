@@ -33,6 +33,7 @@ TABLES = {
     "dim_indicator": """
         SELECT
             indicator,
+            label,
             name,
             CASE
                 WHEN indicator LIKE 'FX.%' THEN 'Demand (Findex)'

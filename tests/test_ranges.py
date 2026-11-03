@@ -13,7 +13,7 @@ import pytest
 import yaml
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
-INDICATORS = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))["indicators"]
+INDICATORS = list(yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))["indicators"])
 
 # (min, max). World max 2011-2024 in the comment.
 VALID_RANGES = {
