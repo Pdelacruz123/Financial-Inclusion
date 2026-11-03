@@ -37,8 +37,10 @@ MUTED_COLOR = "#8a8984"
 TEXT_COLOR = {"light": "#0b0b0b", "dark": "#f0efec"}
 
 ATTRIBUTION = (
-    "Data: The World Bank: World Development Indicators: Global Findex Database; "
-    "The World Bank: World Development Indicators: IMF Financial Access Survey (CC BY 4.0). "
+    "Data (CC BY 4.0): The World Bank: World Development Indicators: Global Findex Database; "
+    "IMF Financial Access Survey; ITU World Telecommunication/ICT Indicators Database; "
+    "IMF International Financial Statistics and World Bank/OECD estimates; "
+    "World Bank and OECD national accounts data. "
     "Margins of error from the Global Findex survey methodology, Table A.1. "
     "This project is not affiliated with or endorsed by the World Bank."
 )
@@ -47,12 +49,37 @@ SUPPLY_INDICATORS = {
     "FB.ATM.TOTL.P5": "ATMs per 100,000 adults",
     "FB.CBK.BRCH.P5": "Commercial bank branches per 100,000 adults",
 }
-MAX_YEARS_APART = 2  # supply data older than this, relative to the survey, is not paired
-# Found by the validation sample (tests/test_validation_sample.py), checked 2026-11-02.
-SOURCE_REVISIONS = {
+CONTEXT_INDICATORS = {
+    "IT.NET.USER.ZS": "Internet users, % of population",
+    "IT.CEL.SETS.P2": "Mobile subscriptions per 100 people",
+    "FS.AST.PRVT.GD.ZS": "Domestic credit to private sector, % of GDP",
+    "NY.GDP.PCAP.CD": "GDP per capita, current US$",
+}
+# Indicators whose values span orders of magnitude across countries.
+LOG_SCALE = {"FB.ATM.TOTL.P5", "FB.CBK.BRCH.P5", "NY.GDP.PCAP.CD"}
+MAX_YEARS_APART = 2  # data older than this, relative to the survey, is not paired
+INDICATOR_NOTES = {
+    # Found by the validation sample (tests/test_validation_sample.py), checked 2026-11-02.
     "FB.ATM.TOTL.P5": (
         "**Brazil**: the IMF, the original source, revised its ATM figures for 2020-2024 down "
         "(2024: 66.4 instead of the 89.9 shown here). The World Bank has not republished them yet."
+    ),
+    "IT.NET.USER.ZS": (
+        "Internet use is a share of the whole population (all ages), while account ownership "
+        "covers adults 15+, so the two measure different groups of people."
+    ),
+    "IT.CEL.SETS.P2": (
+        "It counts lines, not people: one person can have several SIM cards, so values above "
+        "100 are normal."
+    ),
+    "FS.AST.PRVT.GD.ZS": (
+        "**Financial depth, not inclusion.** It measures how much credit there is relative to "
+        "the economy, not how many people get it; credit can be concentrated in large firms "
+        "and wealthy households."
+    ),
+    "NY.GDP.PCAP.CD": (
+        "In current US dollars, so it moves with exchange rates: a change can reflect the "
+        "currency rather than living standards."
     ),
 }
 
@@ -444,7 +471,7 @@ def label_side(pairs):
     sides = []
     for i, row in pairs.iterrows():
         close_on_right = (
-            ((pairs["account"] - row["account"]).abs() < 2)
+            ((pairs["account"] - row["account"]).abs() < 2.5)
             & ((log_x - log_x[i]).abs() < 0.15)
             & (pairs["supply"] > row["supply"])
         )
@@ -452,13 +479,14 @@ def label_side(pairs):
     return sides
 
 
-def infrastructure_chart(pairs, supply_label):
+def relation_chart(pairs, supply_label, log_scale):
     text_color = TEXT_COLOR.get(st.context.theme.type, TEXT_COLOR["light"])
     pairs = pairs.assign(side=label_side(pairs))
+    # Log scale: one country with a very high value would otherwise squeeze all others left.
+    x_title = f"{supply_label} (log scale)" if log_scale else supply_label
+    x_scale = alt.Scale(type="log") if log_scale else alt.Scale(zero=False)
     base = alt.Chart(pairs).encode(
-        # Log scale: one country with many ATMs would otherwise squeeze all others to the left.
-        x=alt.X("supply:Q", title=f"{supply_label} (log scale)", scale=alt.Scale(type="log"),
-                axis=alt.Axis(grid=False)),
+        x=alt.X("supply:Q", title=x_title, scale=x_scale, axis=alt.Axis(grid=False)),
         y=alt.Y("account:Q", title="Account ownership, % of adults 15+",
                 scale=alt.Scale(domain=[0, 100])),
         tooltip=[
@@ -466,7 +494,7 @@ def infrastructure_chart(pairs, supply_label):
             alt.Tooltip("account:Q", title="% of adults with an account", format=".1f"),
             alt.Tooltip("survey_year:Q", title="Surveyed in", format="d"),
             alt.Tooltip("supply:Q", title=supply_label, format=".1f"),
-            alt.Tooltip("supply_year:Q", title="Supply data year", format="d"),
+            alt.Tooltip("supply_year:Q", title="Data year", format="d"),
         ],
     )
     points = base.mark_circle(size=90, opacity=1, color=SERIES_COLOR)
@@ -479,18 +507,15 @@ def infrastructure_chart(pairs, supply_label):
     return (points + right + left).properties(height=480)
 
 
-def infrastructure():
-    st.subheader("Infrastructure vs inclusion")
-    st.caption(
-        "Do countries with more ATMs or bank branches have more adults with an account? "
-        "ATMs and branches measure supply (where people could go); account ownership measures "
-        "use. This view shows correlation, not cause."
-    )
+def relation_view(indicators, key, cause_note):
+    """Scatter of one indicator against account ownership, with its rank correlation.
+
+    "supply" is the compared indicator (named after the Infrastructure view, its first use).
+    """
     supply = st.radio(
-        "Supply", list(SUPPLY_INDICATORS), format_func=SUPPLY_INDICATORS.get,
-        horizontal=True, key="infrastructure_supply",
+        "Indicator", list(indicators), format_func=indicators.get, horizontal=True, key=key
     )
-    # ASOF JOIN: for each survey, take the latest supply value from that year or before.
+    # ASOF JOIN: for each survey, take the latest value of the indicator from that year or before.
     table = query(
         """
         SELECT c.name, t.survey_year, t.value AS account, s.year AS supply_year, s.value AS supply
@@ -505,28 +530,29 @@ def infrastructure():
     paired = table["supply"].notna() & (table["survey_year"] - table["supply_year"] <= MAX_YEARS_APART)
     pairs = table[paired]
 
-    st.altair_chart(infrastructure_chart(pairs, SUPPLY_INDICATORS[supply]), width="stretch")
+    st.altair_chart(
+        relation_chart(pairs, indicators[supply], supply in LOG_SCALE), width="stretch"
+    )
     rho = rank_correlation(pairs["supply"], pairs["account"])
     st.markdown(
         f"**Rank correlation: {rho:.2f}** across {len(pairs)} countries. "
-        "It goes from -1 to 1: 1 means the country with more supply always has more accounts, "
+        "It goes from -1 to 1: 1 means a higher value always comes with more accounts, "
         "0 means no relation. With fewer than 20 countries, values between about -0.5 and 0.5 "
         "can easily appear by chance."
     )
     notes = [
-        "**Correlation is not cause.** Richer countries tend to have both more ATMs and more "
-        "accounts, and mobile money can give people an account without any ATM or branch nearby.",
-        f"Each survey is paired with the latest supply figure from the same year or up to "
+        cause_note,
+        f"Each survey is paired with the latest figure from the same year or up to "
         f"{MAX_YEARS_APART} years before.",
     ]
     for row in table[~paired].itertuples():
         reason = (
-            "no supply data" if pd.isna(row.supply)
-            else f"latest supply data is from {int(row.supply_year)}"
+            "no data" if pd.isna(row.supply)
+            else f"latest data is from {int(row.supply_year)}"
         )
         notes.append(f"**{row.name}**: left out, {reason}.")
-    if supply in SOURCE_REVISIONS:
-        notes.append(SOURCE_REVISIONS[supply])
+    if supply in INDICATOR_NOTES:
+        notes.append(INDICATOR_NOTES[supply])
     missing = query(
         """
         SELECT c.name FROM v_data_gaps AS g JOIN countries AS c USING (country_iso3)
@@ -545,26 +571,68 @@ def infrastructure():
                 "name": "Country",
                 "survey_year": st.column_config.NumberColumn("Surveyed in", format="%d"),
                 "account": st.column_config.NumberColumn("Account, %", format="%.1f"),
-                "supply_year": st.column_config.NumberColumn("Supply year", format="%d"),
-                "supply": st.column_config.NumberColumn(SUPPLY_INDICATORS[supply], format="%.1f"),
+                "supply_year": st.column_config.NumberColumn("Data year", format="%d"),
+                "supply": st.column_config.NumberColumn(indicators[supply], format="%.1f"),
             },
         )
 
 
-st.set_page_config(page_title="Financial inclusion monitor", layout="wide")
-st.title("Financial inclusion monitor: Latin America")
+def infrastructure():
+    st.subheader("Infrastructure vs inclusion")
+    st.caption(
+        "Do countries with more ATMs or bank branches have more adults with an account? "
+        "ATMs and branches measure supply (where people could go); account ownership measures "
+        "use. This view shows correlation, not cause."
+    )
+    relation_view(
+        SUPPLY_INDICATORS,
+        key="infrastructure_supply",
+        cause_note=(
+            "**Correlation is not cause.** Richer countries tend to have both more ATMs and more "
+            "accounts, and mobile money can give people an account without any ATM or branch "
+            "nearby."
+        ),
+    )
 
-overview_tab, evolution_tab, gaps_tab, infrastructure_tab = st.tabs(
-    ["Overview", "Evolution", "Gaps", "Infrastructure"]
-)
-with overview_tab:
-    overview()
-with evolution_tab:
-    evolution()
-with gaps_tab:
-    gaps()
-with infrastructure_tab:
-    infrastructure()
 
-st.divider()
-st.caption(ATTRIBUTION)
+def context():
+    st.subheader("Connectivity and context")
+    st.caption(
+        "How do connectivity and the size of the economy relate to account ownership? "
+        "None of these indicators measures financial inclusion itself."
+    )
+    relation_view(
+        CONTEXT_INDICATORS,
+        key="context_indicator",
+        cause_note=(
+            "**Correlation is not cause.** Income, education and city life tend to rise together "
+            "with connectivity and with accounts; this view cannot tell them apart."
+        ),
+    )
+
+
+def main():
+    st.set_page_config(page_title="Financial inclusion monitor", layout="wide")
+    st.title("Financial inclusion monitor: Latin America")
+
+    overview_tab, evolution_tab, gaps_tab, infrastructure_tab, context_tab = st.tabs(
+        ["Overview", "Evolution", "Gaps", "Infrastructure", "Context"]
+    )
+    with overview_tab:
+        overview()
+    with evolution_tab:
+        evolution()
+    with gaps_tab:
+        gaps()
+    with infrastructure_tab:
+        infrastructure()
+    with context_tab:
+        context()
+
+    st.divider()
+    st.caption(ATTRIBUTION)
+
+
+# streamlit run (and AppTest) execute this file as __main__; tests import it to reach the helpers.
+if __name__ == "__main__":
+    main()
