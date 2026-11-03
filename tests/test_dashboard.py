@@ -46,6 +46,15 @@ def test_gaps_for_women(con):
     assert abs(gap["Peru"] - 3.1) < 0.1  # all adults 59.3, women 56.2 (2024)
 
 
+def test_infrastructure_pairs(con):
+    app = AppTest.from_file(str(DASHBOARD), default_timeout=30).run()
+    pairs = next(df.value for df in app.dataframe if "supply_year" in df.value.columns)
+    assert "Brazil" in set(pairs["name"])
+    # Venezuela's latest ATM figure is from 2015, too old to pair with a 2024 survey.
+    assert "Venezuela, RB" not in set(pairs["name"])
+    assert (pairs["survey_year"] - pairs["supply_year"]).between(0, 2).all()
+
+
 def test_dashboard_runs_for_every_group(con):
     app = AppTest.from_file(str(DASHBOARD), default_timeout=30).run()
     assert not app.exception

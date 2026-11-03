@@ -6,6 +6,7 @@ otherwise it downloads the latest weekly release from GitHub.
 Usage:  streamlit run src/dashboard.py
 """
 
+import math
 import tempfile
 import time
 from datetime import timedelta
@@ -36,10 +37,24 @@ MUTED_COLOR = "#8a8984"
 TEXT_COLOR = {"light": "#0b0b0b", "dark": "#f0efec"}
 
 ATTRIBUTION = (
-    "Data: The World Bank: World Development Indicators: Global Findex Database (CC BY 4.0). "
+    "Data: The World Bank: World Development Indicators: Global Findex Database; "
+    "The World Bank: World Development Indicators: IMF Financial Access Survey (CC BY 4.0). "
     "Margins of error from the Global Findex survey methodology, Table A.1. "
     "This project is not affiliated with or endorsed by the World Bank."
 )
+
+SUPPLY_INDICATORS = {
+    "FB.ATM.TOTL.P5": "ATMs per 100,000 adults",
+    "FB.CBK.BRCH.P5": "Commercial bank branches per 100,000 adults",
+}
+MAX_YEARS_APART = 2  # supply data older than this, relative to the survey, is not paired
+# Found by the validation sample (tests/test_validation_sample.py), checked 2026-11-02.
+SOURCE_REVISIONS = {
+    "FB.ATM.TOTL.P5": (
+        "**Brazil**: the IMF, the original source, revised its ATM figures for 2020-2024 down "
+        "(2024: 66.4 instead of the 89.9 shown here). The World Bank has not republished them yet."
+    ),
+}
 
 
 @st.cache_resource(ttl=timedelta(days=1))  # re-download once a day so the weekly release shows up
@@ -418,16 +433,138 @@ def gaps():
         )
 
 
+def rank_correlation(x, y):
+    """Spearman correlation: Pearson on the ranks (avoids adding scipy for one number)."""
+    return x.rank().corr(y.rank())
+
+
+def label_side(pairs):
+    """"left" when a close neighbour sits just to the right (their labels would overlap)."""
+    log_x = pairs["supply"].map(math.log10)  # the x axis is logarithmic
+    sides = []
+    for i, row in pairs.iterrows():
+        close_on_right = (
+            ((pairs["account"] - row["account"]).abs() < 2)
+            & ((log_x - log_x[i]).abs() < 0.15)
+            & (pairs["supply"] > row["supply"])
+        )
+        sides.append("left" if close_on_right.any() else "right")
+    return sides
+
+
+def infrastructure_chart(pairs, supply_label):
+    text_color = TEXT_COLOR.get(st.context.theme.type, TEXT_COLOR["light"])
+    pairs = pairs.assign(side=label_side(pairs))
+    base = alt.Chart(pairs).encode(
+        # Log scale: one country with many ATMs would otherwise squeeze all others to the left.
+        x=alt.X("supply:Q", title=f"{supply_label} (log scale)", scale=alt.Scale(type="log"),
+                axis=alt.Axis(grid=False)),
+        y=alt.Y("account:Q", title="Account ownership, % of adults 15+",
+                scale=alt.Scale(domain=[0, 100])),
+        tooltip=[
+            alt.Tooltip("name:N", title="Country"),
+            alt.Tooltip("account:Q", title="% of adults with an account", format=".1f"),
+            alt.Tooltip("survey_year:Q", title="Surveyed in", format="d"),
+            alt.Tooltip("supply:Q", title=supply_label, format=".1f"),
+            alt.Tooltip("supply_year:Q", title="Supply data year", format="d"),
+        ],
+    )
+    points = base.mark_circle(size=90, opacity=1, color=SERIES_COLOR)
+    right = base.mark_text(align="left", dx=7, fontSize=11, color=text_color).encode(
+        text="name:N"
+    ).transform_filter("datum.side == 'right'")
+    left = base.mark_text(align="right", dx=-7, fontSize=11, color=text_color).encode(
+        text="name:N"
+    ).transform_filter("datum.side == 'left'")
+    return (points + right + left).properties(height=480)
+
+
+def infrastructure():
+    st.subheader("Infrastructure vs inclusion")
+    st.caption(
+        "Do countries with more ATMs or bank branches have more adults with an account? "
+        "ATMs and branches measure supply (where people could go); account ownership measures "
+        "use. This view shows correlation, not cause."
+    )
+    supply = st.radio(
+        "Supply", list(SUPPLY_INDICATORS), format_func=SUPPLY_INDICATORS.get,
+        horizontal=True, key="infrastructure_supply",
+    )
+    # ASOF JOIN: for each survey, take the latest supply value from that year or before.
+    table = query(
+        """
+        SELECT c.name, t.survey_year, t.value AS account, s.year AS supply_year, s.value AS supply
+        FROM observations AS t
+        ASOF LEFT JOIN observations AS s
+            ON s.country_iso3 = t.country_iso3 AND s.indicator = ? AND s.year <= t.survey_year
+        JOIN countries AS c ON c.country_iso3 = t.country_iso3
+        WHERE t.indicator = ? AND t.edition = (SELECT max(edition) FROM observations WHERE indicator = ?)
+        """,
+        [supply, TOTAL, TOTAL],
+    )
+    paired = table["supply"].notna() & (table["survey_year"] - table["supply_year"] <= MAX_YEARS_APART)
+    pairs = table[paired]
+
+    st.altair_chart(infrastructure_chart(pairs, SUPPLY_INDICATORS[supply]), width="stretch")
+    rho = rank_correlation(pairs["supply"], pairs["account"])
+    st.markdown(
+        f"**Rank correlation: {rho:.2f}** across {len(pairs)} countries. "
+        "It goes from -1 to 1: 1 means the country with more supply always has more accounts, "
+        "0 means no relation. With fewer than 20 countries, values between about -0.5 and 0.5 "
+        "can easily appear by chance."
+    )
+    notes = [
+        "**Correlation is not cause.** Richer countries tend to have both more ATMs and more "
+        "accounts, and mobile money can give people an account without any ATM or branch nearby.",
+        f"Each survey is paired with the latest supply figure from the same year or up to "
+        f"{MAX_YEARS_APART} years before.",
+    ]
+    for row in table[~paired].itertuples():
+        reason = (
+            "no supply data" if pd.isna(row.supply)
+            else f"latest supply data is from {int(row.supply_year)}"
+        )
+        notes.append(f"**{row.name}**: left out, {reason}.")
+    if supply in SOURCE_REVISIONS:
+        notes.append(SOURCE_REVISIONS[supply])
+    missing = query(
+        """
+        SELECT c.name FROM v_data_gaps AS g JOIN countries AS c USING (country_iso3)
+        WHERE g.indicator = ? ORDER BY c.name
+        """,
+        [TOTAL],
+    )["name"]
+    if len(missing):
+        notes.append(f"Not shown, without the latest Findex edition: {', '.join(missing)}.")
+    st.markdown("\n".join(f"- {note}" for note in notes))
+    with st.expander("Table"):
+        st.dataframe(
+            pairs.sort_values("supply", ascending=False),
+            hide_index=True,
+            column_config={
+                "name": "Country",
+                "survey_year": st.column_config.NumberColumn("Surveyed in", format="%d"),
+                "account": st.column_config.NumberColumn("Account, %", format="%.1f"),
+                "supply_year": st.column_config.NumberColumn("Supply year", format="%d"),
+                "supply": st.column_config.NumberColumn(SUPPLY_INDICATORS[supply], format="%.1f"),
+            },
+        )
+
+
 st.set_page_config(page_title="Financial inclusion monitor", layout="wide")
 st.title("Financial inclusion monitor: Latin America")
 
-overview_tab, evolution_tab, gaps_tab = st.tabs(["Overview", "Evolution", "Gaps"])
+overview_tab, evolution_tab, gaps_tab, infrastructure_tab = st.tabs(
+    ["Overview", "Evolution", "Gaps", "Infrastructure"]
+)
 with overview_tab:
     overview()
 with evolution_tab:
     evolution()
 with gaps_tab:
     gaps()
+with infrastructure_tab:
+    infrastructure()
 
 st.divider()
 st.caption(ATTRIBUTION)
