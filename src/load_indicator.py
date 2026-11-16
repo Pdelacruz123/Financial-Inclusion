@@ -8,10 +8,15 @@ Steps, once per indicator (all countries in one request):
 Then save the country and indicator names, load the Findex sample sizes
 (data/findex_sample.csv) and (re)create the SQL views defined in sql/.
 
+If an indicator fails after all retries, its previous rows in the database are
+kept and the script exits with an error at the end only if the failure leaves
+the lookup tables incomplete or no indicator could be loaded.
+
 Usage:  python src/load_indicator.py
 """
 
 import json
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +28,8 @@ import yaml
 
 YEAR_RANGE = "2011:2024"
 PAUSE_BETWEEN_REQUESTS_SEC = 1  # usage limits are not documented, so be gentle
+CONNECT_TIMEOUT_SEC = 10
+READ_TIMEOUT_SEC = 90  # the World Bank API is sometimes slow, 30 s was not enough
 
 API_URL = "https://api.worldbank.org/v2/country/{countries}/indicator/{indicator}"
 
@@ -37,6 +44,9 @@ COLUMNS = ["country_iso3", "indicator", "year", "edition", "survey_year", "value
 
 # shortcut: hardcoded list, add the next Findex edition here when it is published.
 FINDEX_EDITIONS = (2011, 2014, 2017, 2021, 2024)
+
+SESSION = requests.Session()
+SESSION.headers.update({"User-Agent": "financial-inclusion-pipeline/1.0"})
 
 
 def findex_edition(survey_year):
@@ -55,26 +65,28 @@ def load_config(path=CONFIG_PATH):
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def fetch(countries, indicator, attempts=3, pause_sec=2):
+def fetch(countries, indicator, attempts=5, pause_sec=3):
     """Request one indicator for several countries and return the parsed JSON.
 
-    On failure (network down, 5xx error...) wait and retry. The wait grows
-    with each attempt: 2 s, 4 s, 6 s.
+    On failure (timeout, network down, 429/5xx error...) wait and retry. The
+    wait doubles with each attempt: 3 s, 6 s, 12 s, 24 s.
     """
     url = API_URL.format(countries=";".join(countries), indicator=indicator)
     params = {"format": "json", "date": YEAR_RANGE, "per_page": 1000}
 
     for attempt in range(1, attempts + 1):
         try:
-            response = requests.get(url, params=params, timeout=30)
+            response = SESSION.get(
+                url, params=params, timeout=(CONNECT_TIMEOUT_SEC, READ_TIMEOUT_SEC)
+            )
             response.raise_for_status()  # raises if the HTTP status is not 200
             data = response.json()
             break
-        except requests.RequestException as error:
+        except (requests.RequestException, ValueError) as error:  # ValueError: invalid JSON
             if attempt == attempts:
                 raise
-            wait = pause_sec * attempt
-            print(f"Attempt {attempt} failed ({error}). Retrying in {wait} s...")
+            wait = pause_sec * 2 ** (attempt - 1)
+            print(f"Attempt {attempt}/{attempts} failed ({error}). Retrying in {wait} s...")
             time.sleep(wait)
 
     # Normal response: [metadata, [rows]]. With an invalid code the API still
@@ -189,23 +201,59 @@ def create_views(db_path=DB_PATH):
         con.close()
 
 
+def existing_lookup_names(db_path=DB_PATH):
+    """Names already stored from earlier runs, used to fill gaps when an indicator fails."""
+    if not db_path.exists():
+        return {}, {}
+    con = duckdb.connect(str(db_path), read_only=True)
+    try:
+        tables = {row[0] for row in con.execute("SHOW TABLES").fetchall()}
+        countries = (
+            dict(con.execute("SELECT country_iso3, name FROM countries").fetchall())
+            if "countries" in tables
+            else {}
+        )
+        indicators = (
+            dict(con.execute("SELECT indicator, name FROM indicators").fetchall())
+            if "indicators" in tables
+            else {}
+        )
+        return countries, indicators
+    finally:
+        con.close()
+
+
 def main():
     config = load_config()
     countries = config["countries"]
     extracted_at = datetime.now(timezone.utc)
-    country_names = {}
-    indicator_names = {}
+    previous_countries, previous_indicators = existing_lookup_names()
+    country_names = dict(previous_countries)
+    indicator_names = dict(previous_indicators)
+    failed = []
+    loaded = 0
 
     for i, indicator in enumerate(config["indicators"]):
         if i > 0:
             time.sleep(PAUSE_BETWEEN_REQUESTS_SEC)
-        data = fetch(countries, indicator)
+        try:
+            data = fetch(countries, indicator)
+        except (requests.RequestException, ValueError) as error:
+            # Keep the rows from the last good run; do not touch the database.
+            print(f"{indicator:18} FAILED, keeping previous data: {error}")
+            failed.append(indicator)
+            continue
         country_names.update({r["countryiso3code"]: r["country"]["value"] for r in data[1]})
         indicator_names.update({r["indicator"]["id"]: r["indicator"]["value"] for r in data[1]})
         save_raw(data, indicator, extracted_at)
         table = to_table(data, extracted_at)
         save_to_duckdb(table, countries, indicator)
+        loaded += 1
         print(f"{indicator:18} {len(table):4} rows")
+
+    if loaded == 0:
+        print("No indicator could be loaded.")
+        sys.exit(1)
 
     save_lookup("countries", sorted(country_names.items()), ["country_iso3", "name"])
     save_lookup(
@@ -216,6 +264,11 @@ def main():
     load_findex_sample()
     create_views()
     print(f"Done. Database: {DB_PATH.relative_to(ROOT)}")
+
+    if failed:
+        # Visible in the Actions summary, but the data and views are already updated.
+        print(f"::warning::Indicators not refreshed this run: {', '.join(failed)}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
