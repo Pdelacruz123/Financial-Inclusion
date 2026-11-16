@@ -1,6 +1,6 @@
 """Download the World Bank indicators listed in config.yaml and store them in DuckDB.
 
-Steps, once per indicator (all countries in one request):
+Steps, once per indicator (countries are requested in small batches):
 1. Call the World Bank API v2 (with pauses and retries).
 2. Save the raw JSON to data/raw/ (keeps a history of series revisions).
 3. Turn the response into a pandas table.
@@ -8,9 +8,9 @@ Steps, once per indicator (all countries in one request):
 Then save the country and indicator names, load the Findex sample sizes
 (data/findex_sample.csv) and (re)create the SQL views defined in sql/.
 
-If an indicator fails after all retries, its previous rows in the database are
-kept and the script exits with an error at the end only if the failure leaves
-the lookup tables incomplete or no indicator could be loaded.
+If an indicator fails after all retries, it gets a second round after a long
+pause. If it still fails, its previous rows are kept and the run ends with a
+warning (green job). The script exits with an error only if nothing loaded.
 
 Usage:  python src/load_indicator.py
 """
@@ -29,7 +29,9 @@ import yaml
 YEAR_RANGE = "2011:2024"
 PAUSE_BETWEEN_REQUESTS_SEC = 1  # usage limits are not documented, so be gentle
 CONNECT_TIMEOUT_SEC = 10
-READ_TIMEOUT_SEC = 90  # the World Bank API is sometimes slow, 30 s was not enough
+READ_TIMEOUT_SEC = 60
+COUNTRY_BATCH_SIZE = 7  # smaller requests are less likely to time out
+RETRY_ROUND_PAUSE_SEC = 60
 
 API_URL = "https://api.worldbank.org/v2/country/{countries}/indicator/{indicator}"
 
@@ -65,11 +67,11 @@ def load_config(path=CONFIG_PATH):
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def fetch(countries, indicator, attempts=5, pause_sec=3):
+def fetch(countries, indicator, attempts=4, pause_sec=3):
     """Request one indicator for several countries and return the parsed JSON.
 
     On failure (timeout, network down, 429/5xx error...) wait and retry. The
-    wait doubles with each attempt: 3 s, 6 s, 12 s, 24 s.
+    wait doubles with each attempt: 3 s, 6 s, 12 s.
     """
     url = API_URL.format(countries=";".join(countries), indicator=indicator)
     params = {"format": "json", "date": YEAR_RANGE, "per_page": 1000}
@@ -97,6 +99,18 @@ def fetch(countries, indicator, attempts=5, pause_sec=3):
         raise ValueError("The response has more than one page; pagination is missing.")
 
     return data
+
+
+def fetch_batched(countries, indicator):
+    """Fetch an indicator in country batches and merge them into one [meta, rows] response."""
+    rows = []
+    for start in range(0, len(countries), COUNTRY_BATCH_SIZE):
+        batch = countries[start:start + COUNTRY_BATCH_SIZE]
+        if start > 0:
+            time.sleep(PAUSE_BETWEEN_REQUESTS_SEC)
+        data = fetch(batch, indicator)
+        rows.extend(data[1])
+    return [{"page": 1, "pages": 1, "total": len(rows)}, rows]
 
 
 def save_raw(data, indicator, extracted_at):
@@ -223,6 +237,17 @@ def existing_lookup_names(db_path=DB_PATH):
         con.close()
 
 
+def load_one(countries, indicator, extracted_at, country_names, indicator_names):
+    """Download, store and register the names of one indicator."""
+    data = fetch_batched(countries, indicator)
+    country_names.update({r["countryiso3code"]: r["country"]["value"] for r in data[1]})
+    indicator_names.update({r["indicator"]["id"]: r["indicator"]["value"] for r in data[1]})
+    save_raw(data, indicator, extracted_at)
+    table = to_table(data, extracted_at)
+    save_to_duckdb(table, countries, indicator)
+    print(f"{indicator:18} {len(table):4} rows")
+
+
 def main():
     config = load_config()
     countries = config["countries"]
@@ -230,26 +255,26 @@ def main():
     previous_countries, previous_indicators = existing_lookup_names()
     country_names = dict(previous_countries)
     indicator_names = dict(previous_indicators)
-    failed = []
+    pending = list(config["indicators"])
     loaded = 0
 
-    for i, indicator in enumerate(config["indicators"]):
-        if i > 0:
-            time.sleep(PAUSE_BETWEEN_REQUESTS_SEC)
-        try:
-            data = fetch(countries, indicator)
-        except (requests.RequestException, ValueError) as error:
-            # Keep the rows from the last good run; do not touch the database.
-            print(f"{indicator:18} FAILED, keeping previous data: {error}")
-            failed.append(indicator)
-            continue
-        country_names.update({r["countryiso3code"]: r["country"]["value"] for r in data[1]})
-        indicator_names.update({r["indicator"]["id"]: r["indicator"]["value"] for r in data[1]})
-        save_raw(data, indicator, extracted_at)
-        table = to_table(data, extracted_at)
-        save_to_duckdb(table, countries, indicator)
-        loaded += 1
-        print(f"{indicator:18} {len(table):4} rows")
+    for round_number in (1, 2):
+        failed = []
+        for i, indicator in enumerate(pending):
+            if i > 0:
+                time.sleep(PAUSE_BETWEEN_REQUESTS_SEC)
+            try:
+                load_one(countries, indicator, extracted_at, country_names, indicator_names)
+                loaded += 1
+            except (requests.RequestException, ValueError) as error:
+                # Keep the rows from the last good run; the database is not touched.
+                print(f"{indicator:18} FAILED (round {round_number}), keeping previous data: {error}")
+                failed.append(indicator)
+        pending = failed
+        if not pending or round_number == 2:
+            break
+        print(f"Retrying {len(pending)} failed indicators in {RETRY_ROUND_PAUSE_SEC} s...")
+        time.sleep(RETRY_ROUND_PAUSE_SEC)
 
     if loaded == 0:
         print("No indicator could be loaded.")
@@ -265,10 +290,9 @@ def main():
     create_views()
     print(f"Done. Database: {DB_PATH.relative_to(ROOT)}")
 
-    if failed:
-        # Visible in the Actions summary, but the data and views are already updated.
-        print(f"::warning::Indicators not refreshed this run: {', '.join(failed)}")
-        sys.exit(1)
+    if pending:
+        # Job stays green; the warning shows up in the Actions summary.
+        print(f"::warning::Indicators not refreshed this run: {', '.join(pending)}")
 
 
 if __name__ == "__main__":
